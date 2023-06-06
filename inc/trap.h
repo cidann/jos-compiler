@@ -75,6 +75,27 @@ struct Trapframe {
 } __attribute__((packed));
 
 
+void DIVIDE();
+void DEBUG();
+void NMI();
+void BRKPT();
+void OFLOW();
+void BOUND();
+void ILLOP();
+void DEVICE();
+void DBLFLT();
+void TSS();
+void SEGNP();
+void STACK();
+void GPFLT();
+void PGFLT();
+void FPERR();
+void ALIGN();
+void MCHK();
+void SIMDERR();
+void SYSCALL();
+
+
 #endif /* !__ASSEMBLER__ */
 
 #endif /* !JOS_INC_TRAP_H */

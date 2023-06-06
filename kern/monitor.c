@@ -11,6 +11,7 @@
 #include <kern/monitor.h>
 #include <kern/kdebug.h>
 #include <kern/trap.h>
+#include <kern/env.h>
 
 #define CMDBUF_SIZE	80	// enough for one VGA text line
 
@@ -26,6 +27,8 @@ static struct Command commands[] = {
 	{ "help", "Display this list of commands", mon_help },
 	{ "kerninfo", "Display information about the kernel", mon_kerninfo },
 	{ "backtrace", "display current function call stack", mon_backtrace },
+	{ "continue", "continue from breakpoint", mon_break_continue },
+	{ "si", "continue from breakpoint", mon_break_step },
 };
 
 /***** Implementations of basic kernel monitor commands *****/
@@ -95,7 +98,51 @@ mon_backtrace(int argc, char **argv, struct Trapframe *tf)
 	return 0;
 }
 
+int
+mon_break_continue(int argc, char **argv, struct Trapframe *tf)
+{
+	if(tf->tf_trapno!=T_BRKPT&&tf->tf_trapno!=T_DEBUG){
+		return -1;
+	}
+	
+	//asm volatile("jmp %0"::"r" (tf->tf_eip));
+	asm volatile(
+		"\tmovl %0,%%esp\n"
+		"\tpopal\n"
+		"\tpopl %%es\n"
+		"\tpopl %%ds\n"
+		"\taddl $0x8,%%esp\n" /* skip tf_trapno and tf_errcode */
+		"\tandl $0x11111011, 8(%%esp)\n"
+		"\tiret\n"
+		: : "g" (tf) : "memory");
+		
+	env_pop_tf(tf);
 
+	return -1;
+}
+
+int
+mon_break_step (int argc, char **argv, struct Trapframe *tf){
+	if(tf->tf_trapno!=T_BRKPT&&tf->tf_trapno!=T_DEBUG){
+		return -1;
+	}
+	
+	//asm volatile("jmp %0"::"r" (tf->tf_eip));
+	
+	cprintf("Next instruction eip:%x %x\n",tf->tf_eip,(read_eflags()|FL_TF)&FL_IF);
+	asm volatile(
+		"\tmovl %0,%%esp\n"
+		"\tpopal\n"
+		"\tpopl %%es\n"
+		"\tpopl %%ds\n"
+		"\taddl $0x8,%%esp\n" /* skip tf_trapno and tf_errcode */
+		"\torl $0x00000100, 8(%%esp)\n"
+		"\tiret\n"
+		: : "g" (tf) : "memory");
+
+	
+	return -1;
+}
 
 /***** Kernel monitor command interpreter *****/
 
@@ -155,7 +202,9 @@ monitor(struct Trapframe *tf)
 	while (1) {
 		buf = readline("K> ");
 		if (buf != NULL)
-			if (runcmd(buf, tf) < 0)
+			if (runcmd(buf, tf) < 0){
+				cprintf("Command failed!\n");
 				break;
+			}
 	}
 }

@@ -65,6 +65,27 @@ trap_init(void)
 	extern struct Segdesc gdt[];
 
 	// LAB 3: Your code here.
+	//Should change number to macro but does not matter
+	SETGATE(idt[T_DIVIDE],1,GD_KT,DIVIDE,0);
+	SETGATE(idt[1],1,GD_KT,DEBUG,3);
+	SETGATE(idt[2],1,GD_KT,NMI,0);
+	SETGATE(idt[3],1,GD_KT,BRKPT,3);
+	SETGATE(idt[4],1,GD_KT,OFLOW,0);
+	SETGATE(idt[5],1,GD_KT,BOUND,0);
+	SETGATE(idt[6],1,GD_KT,ILLOP,0);
+	SETGATE(idt[7],1,GD_KT,DEVICE,0);
+	SETGATE(idt[8],1,GD_KT,DBLFLT,0);
+	SETGATE(idt[10],1,GD_KT,TSS,0);
+	SETGATE(idt[11],1,GD_KT,SEGNP,0);
+	SETGATE(idt[12],1,GD_KT,STACK,0);
+	SETGATE(idt[13],1,GD_KT,GPFLT,0);
+	SETGATE(idt[14],1,GD_KT,PGFLT,0);
+	SETGATE(idt[16],1,GD_KT,FPERR,0);
+	SETGATE(idt[17],1,GD_KT,ALIGN,0);
+	SETGATE(idt[18],1,GD_KT,MCHK,0);
+	SETGATE(idt[19],1,GD_KT,SIMDERR,0);
+	SETGATE(idt[T_SYSCALL],1,GD_KT,SYSCALL,3);
+	
 
 	// Per-CPU setup 
 	trap_init_percpu();
@@ -144,7 +165,30 @@ trap_dispatch(struct Trapframe *tf)
 {
 	// Handle processor exceptions.
 	// LAB 3: Your code here.
-
+	if(tf->tf_trapno==T_PGFLT){
+		page_fault_handler(tf);
+		return;
+	}
+	else if(tf->tf_trapno==T_BRKPT){
+		monitor(tf);
+		return;
+	}
+	else if(tf->tf_trapno==T_DEBUG){
+		monitor(tf);
+		return;
+	}
+	else if(tf->tf_trapno==T_SYSCALL){
+		syscall(
+			tf->tf_regs.reg_eax,
+			tf->tf_regs.reg_edx,
+			tf->tf_regs.reg_ecx,
+			tf->tf_regs.reg_ebx,
+			tf->tf_regs.reg_edi,
+			tf->tf_regs.reg_esi
+		);
+		return;
+	}
+	
 	// Unexpected trap: The user process or the kernel has a bug.
 	print_trapframe(tf);
 	if (tf->tf_cs == GD_KT)
@@ -198,6 +242,7 @@ void
 page_fault_handler(struct Trapframe *tf)
 {
 	uint32_t fault_va;
+	struct PageInfo *p;
 
 	// Read processor's CR2 register to find the faulting address
 	fault_va = rcr2();
@@ -205,6 +250,7 @@ page_fault_handler(struct Trapframe *tf)
 	// Handle kernel-mode page faults.
 
 	// LAB 3: Your code here.
+	
 
 	// We've already handled kernel-mode exceptions, so if we get here,
 	// the page fault happened in user mode.

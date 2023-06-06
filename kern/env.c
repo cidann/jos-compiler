@@ -116,6 +116,14 @@ env_init(void)
 {
 	// Set up envs array
 	// LAB 3: Your code here.
+	env_free_list=NULL;
+	for(int i=NENV;i>=0;i--){
+		envs[i].env_id=0;
+		envs[i].env_status=ENV_FREE;
+		envs[i].env_link=env_free_list;
+		env_free_list=&envs[i];
+	}
+
 
 	// Per-CPU part of the initialization
 	env_init_percpu();
@@ -179,6 +187,11 @@ env_setup_vm(struct Env *e)
 	//    - The functions in kern/pmap.h are handy.
 
 	// LAB 3: Your code here.
+	p->pp_ref++;
+	e->env_pgdir=page2kva(p);
+	for(int i=PDX(UTOP);i<NPDENTRIES;i++){
+		e->env_pgdir[i]=kern_pgdir[i];
+	}
 
 	// UVPT maps the env's own page table read-only.
 	// Permissions: kernel R, user R
@@ -267,6 +280,19 @@ region_alloc(struct Env *e, void *va, size_t len)
 	//   'va' and 'len' values that are not page-aligned.
 	//   You should round va down, and round (va + len) up.
 	//   (Watch out for corner-cases!)
+	uintptr_t start=ROUNDDOWN((uintptr_t)va,PGSIZE);
+	uintptr_t end=ROUNDUP((uintptr_t)(va+len),PGSIZE);
+	struct PageInfo *p;
+	pte_t *pte;
+	for(int i=start;i<end;i+=PGSIZE){
+		p=page_alloc(0);
+		p->pp_ref+=1;
+		if(!p) panic("Out of memory for region alloc");
+		pte=pgdir_walk(e->env_pgdir,(void*)i,true);
+		if(!pte) panic("Out of memory for env page table at region alloc");
+		*pte=page2pa(p)|PTE_P|PTE_U|PTE_W;
+		e->env_pgdir[PDX(i)]|=PTE_P|PTE_U|PTE_W;
+	}
 }
 
 //
@@ -323,11 +349,73 @@ load_icode(struct Env *e, uint8_t *binary)
 	//  What?  (See env_run() and env_pop_tf() below.)
 
 	// LAB 3: Your code here.
+	struct Elf * elf_file=(struct Elf *)binary;
+	struct Proghdr *ph, *eph;
+	struct PageInfo* p;
+	pte_t *pe,*kpe;
+	uint32_t s_memory_size,s_file_size;
+	uintptr_t s_memory_start,s_memory_end;
+	char* s_file_start;
+	char* s_copy_start;
+	if (elf_file->e_magic != ELF_MAGIC){
+		panic("invalid elf file at load_icode");
+	}
+	ph = (struct Proghdr *) ((uint8_t *) elf_file + elf_file->e_phoff);
+	eph = ph + elf_file->e_phnum;
+	e->env_tf.tf_eip=elf_file->e_entry;
 
+	for (; ph < eph; ph++){
+		if(ph->p_type != ELF_PROG_LOAD){
+			continue;
+		}
+		s_memory_size=ph->p_memsz;
+		s_file_size=ph->p_filesz;
+		s_memory_start=ROUNDDOWN(ph->p_va,PGSIZE);
+		s_memory_end=ROUNDUP((ph->p_va+s_memory_size),PGSIZE);
+		s_file_start=(char*)((uintptr_t)binary+ph->p_offset);
+		// s_file_end=s_file_start+s_file_size;
+		s_copy_start=(char*)ph->p_va;
+		// s_copy_end=ph->p_va+s_file_size;
+
+		for(uintptr_t i=s_memory_start;i<s_memory_end;i+=PGSIZE){
+			if((p=page_alloc(1))==NULL){
+				panic("out of free pages for load_icode");
+			}
+			p->pp_ref+=1;
+			if((pe=pgdir_walk(e->env_pgdir,(void*)i,true))==NULL){
+				panic("out of free pages for load_icode during pgdir_walk for env");
+			}
+			if((kpe=pgdir_walk(kern_pgdir,(void*)i,true))==NULL){
+				panic("out of free pages for load_icode during pgdir_walk for kernel");
+			}
+			*kpe=*pe=page2pa(p)|PTE_P|PTE_W|PTE_U;
+			kern_pgdir[PDX(i)]=e->env_pgdir[PDX(i)]|=PTE_P|PTE_W|PTE_U;
+		}
+		
+		for(uintptr_t i=0;i<s_file_size;i++){
+			s_copy_start[i]=s_file_start[i];
+		}
+	}
+
+
+	
 	// Now map one page for the program's initial stack
 	// at virtual address USTACKTOP - PGSIZE.
 
 	// LAB 3: Your code here.
+	if((p=page_alloc(1))==NULL){
+		panic("out of free pages for load_icode for stack");
+	}
+	p->pp_ref+=1;
+	if((pe=pgdir_walk(e->env_pgdir,(void*)(USTACKTOP-PGSIZE),true))==NULL){
+		panic("out of free pages for load_icode during pgdir_walk for stack");
+	}
+	*pe=page2pa(p)|PTE_U|PTE_P|PTE_W;
+	e->env_pgdir[PDX(USTACKTOP-PGSIZE)]|=PTE_P|PTE_W|PTE_U;
+	kern_pgdir[PDX(USTACKTOP-PGSIZE)]|=PTE_P|PTE_W|PTE_U;
+
+	
+	
 }
 
 //
@@ -341,6 +429,13 @@ void
 env_create(uint8_t *binary, enum EnvType type)
 {
 	// LAB 3: Your code here.
+	struct Env* env;
+	if((env_alloc(&env,0))!=0){
+		panic("env_alloc for env_create failed");
+	}
+
+	load_icode(env,binary);
+	env->env_type=type;
 }
 
 //
@@ -457,7 +552,20 @@ env_run(struct Env *e)
 	//	e->env_tf to sensible values.
 
 	// LAB 3: Your code here.
+	pte_t *pe=pgdir_walk(e->env_pgdir,(void*)e->env_pgdir,1);
+	if(pe==NULL){
+		panic("can't get page entry of pgdir");
+	}
+	if(curenv!=NULL){
+		if(curenv->env_status==ENV_RUNNING){
+			curenv->env_status=ENV_RUNNABLE;
+		}
+	}
+	curenv=e;
+	curenv->env_status=ENV_RUNNING;
+	curenv->env_runs+=1;
 
-	panic("env_run not yet implemented");
+	lcr3(PADDR(e->env_pgdir));
+	env_pop_tf(&curenv->env_tf);
 }
 
