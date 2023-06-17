@@ -224,6 +224,9 @@ trap(struct Trapframe *tf)
 		// The trapframe on the stack should be ignored from here on.
 		tf = &curenv->env_tf;
 	}
+	else{
+		panic("trap %d during kernel mode!\n",tf->tf_trapno);
+	}
 
 	// Record that tf is the last real trapframe so
 	// print_trapframe can print some additional information.
