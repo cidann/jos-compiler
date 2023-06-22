@@ -216,6 +216,7 @@ mem_init(void)
 	boot_map_region(kern_pgdir,UENVS,NENV*sizeof(struct Env),PADDR(envs),PTE_P|PTE_U);
 
 	//////////////////////////////////////////////////////////////////////
+	//******This is for single cpu(which is a processor core and an APIC)
 	// Use the physical memory that 'bootstack' refers to as the kernel
 	// stack.  The kernel stack grows down from virtual address KSTACKTOP.
 	// We consider the entire range from [KSTACKTOP-PTSIZE, KSTACKTOP)
@@ -226,20 +227,21 @@ mem_init(void)
 	//       overwrite memory.  Known as a "guard page".
 	//     Permissions: kernel RW, user NONE
 	// Your code goes here:
-	
+
 	//from this we can conclude bootstack is the end of the physical kernel stack
 	//The kernel stack physically is also located below the kernel page 
 	//directory and page list
+    /*
 	for(size_t i=0;i<KSTKSIZE;i+=PGSIZE){
 		pg_info=pa2page((physaddr_t)(PADDR(bootstack)+i));
 		if((page_insert(kern_pgdir,pg_info,(void*)((KSTACKTOP-KSTKSIZE)+i),PTE_W)!=0)){
 			panic("not enough memory for kernel stack");
 		}
 	}
-
-
+    */
 
 	//////////////////////////////////////////////////////////////////////
+	//***This is kernel stack mapping for each CPU(which is a processor core and an APIC)
 	// Map all of physical memory at KERNBASE.
 	// Ie.  the VA range [KERNBASE, 2^32) should map to
 	//      the PA range [0, 2^32 - KERNBASE)
@@ -306,6 +308,16 @@ mem_init_mp(void)
 	//
 	// LAB 4: Your code here:
 
+    for(int i=1;i<=NCPU;i++){
+        boot_map_region(
+                kern_pgdir,
+                KSTACKTOP-(KSTKSIZE+KSTKGAP)*i+KSTKGAP,
+                KSTKSIZE,
+                PADDR(percpu_kstacks[i-1]),
+                PTE_W
+        );
+    }
+
 }
 
 // --------------------------------------------------------------
@@ -367,7 +379,8 @@ page_init(void)
 		if(
 			i==0||
 			(i>=PGNUM(IOPHYSMEM)&&i<PGNUM(ROUNDUP(EXTPHYSMEM,PGSIZE)))||
-			(i>=PGNUM(EXTPHYSMEM)&&i<PGNUM(PADDR(ROUNDUP((boot_alloc(0)),PGSIZE))))
+			(i>=PGNUM(EXTPHYSMEM)&&i<PGNUM(PADDR(ROUNDUP((boot_alloc(0)),PGSIZE))))||
+            (i== PGNUM(MPENTRY_PADDR))
 		){
 			continue;
 		}
@@ -679,7 +692,11 @@ mmio_map_region(physaddr_t pa, size_t size)
 	// Hint: The staff solution uses boot_map_region.
 	//
 	// Your code here:
-	panic("mmio_map_region not implemented");
+    boot_map_region(kern_pgdir,base, ROUNDUP(size,PGSIZE),pa,PTE_W);
+    void *old_base=(void*)base;
+    base=base+ROUNDUP(size,PGSIZE);
+    
+    return old_base;
 }
 
 static uintptr_t user_mem_check_addr;
