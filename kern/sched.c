@@ -31,16 +31,20 @@ sched_yield(void)
 	// LAB 4: Your code here.
     size_t starting_index=0;
     if(thiscpu->cpu_env!=NULL){
-        starting_index=ENVX(curenv->env_id);
+        starting_index=ENVX(thiscpu->cpu_env-envs);
     }
+    //circularly iterating envs until index is equal to starting_index
     for(size_t i=starting_index+1;i%NENV!=starting_index;i++){
+        //flow disrupted as env_run wont return
         if(envs[i].env_status==ENV_RUNNABLE){
             idle=&envs[i];
+            cprintf("!!!!!!!!!!!!!!!!!!!!!%d\n",i);
             env_run(idle);
         }
     }
-    if(idle==NULL&&curenv->env_status==ENV_RUNNING){
-        idle=curenv;
+
+    if(envs[starting_index].env_status==ENV_RUNNABLE||envs[starting_index].env_status==ENV_RUNNING){
+        idle=&envs[starting_index];
         env_run(idle);
     }
 

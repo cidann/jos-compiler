@@ -200,6 +200,8 @@ env_setup_vm(struct Env *e)
 	// Permissions: kernel R, user R
 	e->env_pgdir[PDX(UVPT)] = PADDR(e->env_pgdir) | PTE_P | PTE_U;
 
+
+
 	return 0;
 }
 
@@ -425,7 +427,6 @@ load_icode(struct Env *e, uint8_t *binary)
 	*pe=page2pa(p)|PTE_U|PTE_P|PTE_W;
 	e->env_pgdir[PDX(USTACKTOP-PGSIZE)]|=PTE_P|PTE_W|PTE_U;
 	kern_pgdir[PDX(USTACKTOP-PGSIZE)]|=PTE_P|PTE_W|PTE_U;
-
 	
 	
 }
@@ -448,6 +449,8 @@ env_create(uint8_t *binary, enum EnvType type)
 
 	load_icode(env,binary);
 	env->env_type=type;
+    pte_t *pte= pgdir_walk(env->env_pgdir, cprintf,false);
+    cprintf("testing testing %p \n", *pte);
 }
 
 //
@@ -582,6 +585,7 @@ env_run(struct Env *e)
 	if(pe==NULL){
 		panic("can't get page entry of pgdir");
 	}
+
 	if(curenv!=NULL){
 		if(curenv->env_status==ENV_RUNNING){
 			curenv->env_status=ENV_RUNNABLE;

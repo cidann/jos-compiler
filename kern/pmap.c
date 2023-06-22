@@ -362,7 +362,7 @@ page_init(void)
 		// real mode(after 80286 interupt table can be changed in location)
 		// this is only for backward compatibility
 
-		// io hole for 16 bit device also likely for backward compatibility 
+		// io hole for 16 bit device also likely for backward compatibility
 		// for the jos compiler
 
 		// I assumed the mapping at this point is still 1 to 1 above kernbase
@@ -389,11 +389,11 @@ page_init(void)
 			pages[i].pp_link = page_free_list;
 			page_free_list = &pages[i];
 		}
-		
-	
-		
+
+
+
 	}
-	
+
 }
 
 //
@@ -695,7 +695,7 @@ mmio_map_region(physaddr_t pa, size_t size)
     boot_map_region(kern_pgdir,base, ROUNDUP(size,PGSIZE),pa,PTE_W);
     void *old_base=(void*)base;
     base=base+ROUNDUP(size,PGSIZE);
-    
+
     return old_base;
 }
 

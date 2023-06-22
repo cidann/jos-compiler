@@ -7,6 +7,7 @@ umain(int argc, char **argv)
 {
 	int i;
 
+    cprintf("!???????????????????????????????????123 %d\n",1234);
 	cprintf("Hello, I am environment %08x.\n", thisenv->env_id);
 	for (i = 0; i < 5; i++) {
 		sys_yield();
@@ -14,4 +15,5 @@ umain(int argc, char **argv)
 			thisenv->env_id, i);
 	}
 	cprintf("All done in environment %08x.\n", thisenv->env_id);
+    asm volatile("int $3");
 }
